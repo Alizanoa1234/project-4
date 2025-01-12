@@ -13,8 +13,6 @@ new: clean all
 
 clean:
 	rm -f *.o ping traceroute discovery
-<<<<<<< HEAD
-=======
 
 	
 
@@ -61,4 +59,3 @@ clean:
 
 # # Rebuild everything from scratch
 # new: clean all
->>>>>>> origin/master
