@@ -12,9 +12,13 @@
 #include <unistd.h>
 #include <signal.h>
 #include <fcntl.h>
+<<<<<<< HEAD
 #include <getopt.h> 
 #include <netinet/icmp6.h>  
 
+=======
+#include <getopt.h>  // For getopt()
+>>>>>>> origin/master
 
 // Constants for IPv4/IPv6
 #define ICMP_HDRLEN 8
@@ -34,7 +38,11 @@ void parse_arguments(int argc, char *argv[], char **dest_ip, int *type, int *cou
 
 int main(int argc, char *argv[]) {
     char *dest_ip = NULL;
+<<<<<<< HEAD
     int type = 4;     // IPv4 ddest_in.sin_addr.s_addrefault
+=======
+    int type = 4;     // IPv4 default
+>>>>>>> origin/master
     int count = -1;   // Unlimited by default
     int flood = 0;    // No flood mode by default
 
@@ -73,9 +81,13 @@ int main(int argc, char *argv[]) {
     
     if (type == 4) {
         dest_in.sin_family = AF_INET;
+<<<<<<< HEAD
         // dest_in.sin_addr.s_addr = struct icmp6_hdr icmp6hdr; inet_addr(dest_ip);
         dest_in.sin_addr.s_addr = inet_addr(dest_ip);
 
+=======
+        dest_in.sin_addr.s_addr = inet_addr(dest_ip);
+>>>>>>> origin/master
     } else if (type == 6){
         dest_in6.sin6_family = AF_INET6;
         inet_pton(AF_INET6, dest_ip, &dest_in6.sin6_addr);
@@ -115,6 +127,7 @@ int main(int argc, char *argv[]) {
         if (type == 4) {
             icmphdr.icmp_cksum = calculate_checksum((unsigned short *)packet, ICMP_HDRLEN + datalen);
             memcpy(packet, &icmphdr, ICMP_HDRLEN);
+<<<<<<< HEAD
             memcpy(packet + ICMP_HDRLEN, data, datalen);
 
         } else {
@@ -122,6 +135,11 @@ int main(int argc, char *argv[]) {
             memcpy(packet, &icmp6hdr, sizeof(icmp6hdr));
             memcpy(packet + sizeof(icmp6hdr), data, datalen);
 
+=======
+        } else {
+            icmp6hdr.icmp6_cksum = calculate_checksum((unsigned short *)packet, sizeof(icmp6hdr) + datalen);
+            memcpy(packet, &icmp6hdr, sizeof(icmp6hdr));
+>>>>>>> origin/master
         }
 
         gettimeofday(&(struct timeval){0}, 0);  // Start timing
@@ -155,6 +173,7 @@ int main(int argc, char *argv[]) {
                     rtt_sum += rtt;
                     if (rtt < rtt_min) rtt_min = rtt;
                     if (rtt > rtt_max) rtt_max = rtt;
+<<<<<<< HEAD
                     printf("%zd bytes from %s: icmp_seq=%d time=%.2f ms\n", bytes_received, dest_ip, icmp_reply->icmp_seq, rtt);
                 }
             } else if (type == 6) {  // IPv6 Response Handling
@@ -168,6 +187,11 @@ int main(int argc, char *argv[]) {
                     printf("%zd bytes from %s: icmp_seq=%d time=%.2f ms\n", bytes_received, dest_ip, icmp6_reply->icmp6_seq, rtt);
                 }
     }
+=======
+                    printf("%d bytes from %s: icmp_seq=%d time=%.2f ms\n", bytes_received, dest_ip, icmp_reply->icmp_seq, rtt);
+                }
+            }
+>>>>>>> origin/master
             // Add similar parsing for IPv6 echo reply handling here
         } else {
             printf("Request timed out.\n");
@@ -182,7 +206,10 @@ int main(int argc, char *argv[]) {
 
 // Handle Ctrl+C (SIGINT) and print final statistics
 void handle_sigint(int signum) {
+<<<<<<< HEAD
     (void)signum;  // Suppress unused parameter warning
+=======
+>>>>>>> origin/master
     printf("\n--- Ping statistics ---\n");
     printf("%d packets transmitted, %d received, %.2f%% packet loss\n", packets_sent, packets_received,
            ((packets_sent - packets_received) / (double)packets_sent) * 100.0);
@@ -228,4 +255,8 @@ unsigned short calculate_checksum(unsigned short *paddress, int len) {
     sum += (sum >> 16);
 
     return ~sum;
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/master
