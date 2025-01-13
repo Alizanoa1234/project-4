@@ -14,7 +14,7 @@
 #include <getopt.h>
 #include <math.h>
 
-#define RECV_TIMEOUT_MS 2000
+#define RECV_TIMEOUT_MS 10000
 #define PACKET_BUFFER_SIZE 1024
 #define PING_DELAY_SEC 1
 #define MAX_ATTEMPTS 15
@@ -114,9 +114,8 @@ int main(int argc, char *argv[]) {
     }
 
     char buffer[PACKET_BUFFER_SIZE] = {0};
-    char *data_msg = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$^&*()_+{}|:<>?~`-=[]',.";
+    char *data_msg = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     int data_length = strlen(data_msg) + 1;
-    int retry_count = 0;
     int seq_num = 0;
     struct pollfd poll_fds[1];
     poll_fds[0].fd = sock;
@@ -162,18 +161,14 @@ int main(int argc, char *argv[]) {
 
         int ret = poll(poll_fds, 1, RECV_TIMEOUT_MS);
         if (ret == 0) {
-            if (++retry_count == RETRY_LIMIT) {
-                fprintf(stderr, "Timeout: icmp_seq %d. Aborting after %d retries.\n", seq_num, RETRY_LIMIT);
-                break;
-            }
-            fprintf(stderr, "Timeout for icmp_seq %d, retrying...\n", seq_num);
-            --seq_num;
-            continue;
+            fprintf(stderr, "Timeout: icmp_seq %d. Aborting..\n", seq_num);
+            break;  // Exit the loop after the first timeout
         } else if (ret < 0) {
             perror("poll error");
             close(sock);
-            return 1;
+            return 1;  // Return on error
         }
+
 
         if (poll_fds[0].revents & POLLIN) {
             struct sockaddr_storage source_addr;
@@ -186,7 +181,6 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
 
-            retry_count = 0;
             gettimeofday(&end, NULL);
 
             if (ip_version == 4) {

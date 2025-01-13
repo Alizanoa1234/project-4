@@ -7,6 +7,7 @@ CFLAGS = -Wall -Wextra -Werror -std=c99 -pedantic
 # Clean-up command
 REMOVE = rm -f
 
+
 # Program executable
 OUTPUT = ping
 
