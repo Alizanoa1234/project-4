@@ -1,59 +1,17 @@
-#include "traceroute.h"
-#include <unistd.h>  // getopt
-#include <netinet/ip.h>  // struct ip
-#include <netinet/ip_icmp.h>  // struct icmp
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <time.h>
+#include <sys/time.h>
+#include <errno.h>
 
-
-struct ip build_ip_header(struct in_addr source, struct in_addr dest, int ttl) {
-    struct ip ip_header;
-    memset(&ip_header, 0, sizeof(ip_header)); // איפוס הכותרת
-
-    ip_header.ip_hl = 5; // אורך כותרת ב-32 ביטים (5 * 4 = 20 בייטים)
-    ip_header.ip_v = 4; // גרסה 4 (IPv4)
-    ip_header.ip_tos = 0; // Type of Service
-    ip_header.ip_len = htons(sizeof(struct ip) + sizeof(struct icmp)); // אורך כולל (IP + ICMP)
-    ip_header.ip_id = htons(getpid() & 0xFFFF); // מזהה חבילה ייחודי
-    ip_header.ip_off = 0; // ללא fragment
-    ip_header.ip_ttl = ttl; // Time to Live
-    ip_header.ip_p = IPPROTO_ICMP; // פרוטוקול ICMP
-    ip_header.ip_src = source; // כתובת מקור
-    ip_header.ip_dst = dest; // כתובת יעד
-    ip_header.ip_sum = calculate_checksum(&ip_header, sizeof(ip_header)); // חישוב Checksum
-
-    // הדפסת הכותרת שנוצרה
-    printf("Created IP Header:\n");
-    printf("  Version: %d\n", ip_header.ip_v);
-    printf("  Header Length: %d bytes\n", ip_header.ip_hl * 4);
-    printf("  Total Length: %d bytes\n", ntohs(ip_header.ip_len));
-    printf("  TTL: %d\n", ip_header.ip_ttl);
-    printf("  Source: %s\n", inet_ntoa(ip_header.ip_src));
-    printf("  Destination: %s\n", inet_ntoa(ip_header.ip_dst));
-    printf("  Checksum: 0x%04x\n\n", ntohs(ip_header.ip_sum));
-
-    return ip_header;
-}
-
-
-struct icmp build_icmp_header(int seq) {
-    struct icmp icmp_header;
-    memset(&icmp_header, 0, sizeof(icmp_header)); // איפוס הכותרת
-
-    icmp_header.icmp_type = ICMP_ECHO; // Echo Request
-    icmp_header.icmp_code = 0; // תמיד 0 עבור Echo Request
-    icmp_header.icmp_id = htons(getpid() & 0xFFFF); // מזהה ייחודי
-    icmp_header.icmp_seq = htons(seq); // מספר רצף
-    icmp_header.icmp_cksum = 0; // אפס לפני חישוב Checksum
-    icmp_header.icmp_cksum = calculate_checksum(&icmp_header, sizeof(icmp_header)); // חישוב Checksum
-
-    printf("Created ICMP Header:\n");
-    printf("  Type: %d\n", icmp_header.icmp_type);
-    printf("  Code: %d\n", icmp_header.icmp_code);
-    printf("  Identifier: %d\n", ntohs(icmp_header.icmp_id));
-    printf("  Sequence Number: %d\n", ntohs(icmp_header.icmp_seq));
-    printf("  Checksum: 0x%04x\n\n", ntohs(icmp_header.icmp_cksum));
-
-    return icmp_header;
-}
+int sockfd = -1; // ערך ראשוני לא תקין לסוקט
+int global_id = 0;
 
 // פונקציה לחישוב Checksum
 unsigned short calculate_checksum(void *buffer, int length) {
@@ -74,11 +32,20 @@ unsigned short calculate_checksum(void *buffer, int length) {
     return ~sum;
 }
 
+
+void cleanup() {
+    if (sockfd >= 0) {
+        close(sockfd); // שחרור הסוקט
+        printf("Socket closed successfully.\n");
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <destination>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
+    
 
     int max_hops = 30;
     int timeout = 1;
@@ -88,8 +55,11 @@ int main(int argc, char *argv[]) {
     char *destination_ip = NULL;
     int count = 3;   
     int consecutive_failures = 0;
-    struct in_addr source_ip;
-    source_ip.s_addr = INADDR_ANY; // השתמש בכתובת IP מקומית כברירת מחדל
+    int global_seq = 0; // משתנה גלובלי עבור מספר ייחודי
+    srand(time(NULL)); // אתחול מחולל רנדומלי
+    global_id = rand() & 0xFFFF; // קבלת מזהה ייחודי בתחום 16 ביט
+
+
 
 
     //flags
@@ -105,7 +75,13 @@ int main(int argc, char *argv[]) {
                 count = 3;
             }
             break;
-    
+        // case 't':
+        //     timeout = atoi(optarg);
+        //     if (timeout <= 0) {
+        //         fprintf(stderr, "Invalid timeout: %s. Using default: 1 second\n", optarg);
+        //         timeout = 1;
+        //     }
+        //     break;
         case 'm':
             max_hops = atoi(optarg);
             if (max_hops <= 0) {
@@ -138,7 +114,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Error: Destination IP (-a) is required\n");
         exit(EXIT_FAILURE);
     }
-    printf("Destination IP: %s\n", destination_ip);
+     printf("Destination IP: %s\n", destination_ip);
     printf("Packet count: %d\n", count);
     printf("Timeout: %d seconds\n", timeout);
     printf("Max hops: %d\n", max_hops);
@@ -146,9 +122,17 @@ int main(int argc, char *argv[]) {
 
     int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (sockfd < 0) {
-    perror("Socket creation failed. Ensure you have sufficient permissions to create raw sockets.");
+        if (errno == EPERM) { // הרשאות לא מספקות
+            fprintf(stderr, "Error: Unable to create raw socket. You need elevated privileges (run with sudo).\n");
+        } else if (errno == EAFNOSUPPORT) { // פרוטוקול לא נתמך
+            fprintf(stderr, "Error: Address family not supported. Ensure your system supports ICMP raw sockets.\n");
+        } else {
+            perror("Socket creation failed");
+        }
         exit(EXIT_FAILURE);
     }
+
+    atexit(cleanup);
 
     struct sockaddr_in dest_addr;
     memset(&dest_addr, 0, sizeof(dest_addr));
@@ -163,7 +147,7 @@ int main(int argc, char *argv[]) {
     memset(&icmp_packet, 0, sizeof(icmp_packet));
     icmp_packet.icmp_type = 8; // Echo Request
     icmp_packet.icmp_code = 0;
-    icmp_packet.icmp_id = getpid();
+    icmp_packet.icmp_id = (getpid() ^ global_id) & 0xFFFF; // שילוב מזהה ריצה עם PID
 
     printf("Traceroute to %s, %d hops max\n", destination_ip, max_hops);
 for (int ttl = start_ttl; ttl <= end_ttl; ttl++) {
@@ -181,28 +165,12 @@ for (int ttl = start_ttl; ttl <= end_ttl; ttl++) {
         timeout_struct.tv_usec = 0;
         setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout_struct, sizeof(timeout_struct));
 
-        icmp_packet.icmp_seq = ttl * 100 + i; // הפיכת seq לייחודי לכל חבילה
+        icmp_packet.icmp_seq = global_seq++;
         icmp_packet.icmp_cksum = 0;
         icmp_packet.icmp_cksum = calculate_checksum(&icmp_packet, sizeof(icmp_packet));
 
         struct timeval start, end;
         gettimeofday(&start, NULL);
-
-        struct ip ip_header = build_ip_header(source_ip, dest_addr.sin_addr, ttl);
-        struct icmp icmp_header = build_icmp_header(i);
-        
-        printf("\n--- Testing TTL=%d ---\n", ttl);
-        printf("Packet Structure:\n");
-        printf("  IP Header Length: %ld bytes\n", sizeof(ip_header));
-        printf("  ICMP Header Length: %ld bytes\n", sizeof(icmp_header));
-        printf("  Total Packet Length: %ld bytes\n", sizeof(ip_header) + sizeof(icmp_header));
-      
-        // איחוד כותרות IP ו-ICMP:
-        unsigned char packet[sizeof(ip_header) + sizeof(icmp_header)];
-        memcpy(packet, &ip_header, sizeof(ip_header));
-        memcpy(packet + sizeof(ip_header), &icmp_header, sizeof(icmp_header));
-
-
 
         ssize_t sent = sendto(sockfd, &icmp_packet, sizeof(icmp_packet), 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
         if (sent < 0) {
@@ -210,14 +178,19 @@ for (int ttl = start_ttl; ttl <= end_ttl; ttl++) {
             continue;
         }
 
-        char buffer[1024];
+        char buffer[1024] = {0};
         struct sockaddr_in recv_addr;
         socklen_t addr_len = sizeof(recv_addr);
         int received = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&recv_addr, &addr_len);
-        gettimeofday(&end, NULL);
-
         if (received <= 0) {
             printf("* "); // מסמנים חבילה כושלת
+            failed_count++;
+            continue;
+        }
+        gettimeofday(&end, NULL);
+        if (end.tv_sec < start.tv_sec || 
+            (end.tv_sec == start.tv_sec && end.tv_usec < start.tv_usec)) {
+            fprintf(stderr, "Error: Negative RTT value detected.\n");
             failed_count++;
             continue;
         }
@@ -230,8 +203,8 @@ for (int ttl = start_ttl; ttl <= end_ttl; ttl++) {
             continue;
         }
 
-        struct ip *received_ip_header  = (struct ip *)buffer;
-        struct icmp *icmp_reply = (struct icmp *)(buffer + (received_ip_header->ip_hl * 4));
+        struct ip *ip_header = (struct ip *)buffer;
+        struct icmp *icmp_reply = (struct icmp *)(buffer + (ip_header->ip_hl * 4));
 
         // בדיקת Checksum
         unsigned short checksum_received = icmp_reply->icmp_cksum;
@@ -273,12 +246,7 @@ for (int ttl = start_ttl; ttl <= end_ttl; ttl++) {
         printf("Target is unreachable: No response for 3 consecutive hops.\n");
         break;
     }
-     if (ttl == max_hops) {
-        printf("Traceroute failed: Maximum hops (%d) reached.\n", max_hops);
-        break;
     }
-}
 
-    close(sockfd);
     return 0;
 }
