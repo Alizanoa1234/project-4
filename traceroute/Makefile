@@ -1,59 +1,28 @@
-# שם הקובץ הסופי
+# Final output file name
 TARGET = traceroute
 
-# קובץ המקור
+# Source and header files
 SRC = traceroute.c
+HDR = traceroute.h
 
-# הקומפיילר והדגלים
+# Compiler and flags
 CC = gcc
 CFLAGS = -Wall -Wextra -Werror -std=c99 -pedantic
 
-# כלל ברירת המחדל
+# Default rule
 all: $(TARGET)
 
-# כלל לקימפול התוכנית
-$(TARGET): $(SRC)
+# Rule to compile the program
+$(TARGET): $(SRC) $(HDR)
 	$(CC) $(CFLAGS) -o $(TARGET) $(SRC)
 
-# כלל לניקוי קבצים שנוצרו
+# Rule to clean up generated files
 clean:
 	rm -f $(TARGET)
 
-# כלל להרצה
+# Rule to run the program
 run: $(TARGET)
 	./$(TARGET)
 
-# כלל PHONY כדי למנוע התנגשויות עם קבצים באותו שם
+# PHONY rule to prevent conflicts with files of the same name
 .PHONY: all clean run
-
-
-
-#H+C:
-# # שם הקובץ הסופי
-# TARGET = traceroute
-
-# # קבצי המקור והכותרת
-# SRC = traceroute.c
-# HDR = traceroute.h
-
-# # הקומפיילר והדגלים
-# CC = gcc
-# CFLAGS = -Wall -Wextra -Werror -std=c99 -pedantic
-
-# # כלל ברירת המחדל
-# all: $(TARGET)
-
-# # כלל לקימפול התוכנית
-# $(TARGET): $(SRC) $(HDR)
-# 	$(CC) $(CFLAGS) -o $(TARGET) $(SRC)
-
-# # כלל לניקוי קבצים שנוצרו
-# clean:
-# 	rm -f $(TARGET)
-
-# # כלל להרצה
-# run: $(TARGET)
-# 	./$(TARGET)
-
-# # כלל PHONY כדי למנוע התנגשויות עם קבצים באותו שם
-# .PHONY: all clean run

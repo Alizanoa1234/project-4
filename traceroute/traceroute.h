@@ -11,12 +11,25 @@
 #include <unistd.h>
 #include <time.h>
 #include <sys/time.h>
+#include <errno.h>
+#include <getopt.h>
+#include <signal.h>
 
-// פונקציות לחישוב Checksum ולבניית כותרות
+// Global variables
+extern int sockfd; // Initial invalid value for the socket
+extern int global_id;
+extern int total_sent;
+extern int total_received;
+extern int total_failed; // Total number of failed packets
+extern int ttl_processed;
+extern double total_rtt;
+extern double min_rtt;
+extern double max_rtt;
+extern struct timeval program_start, program_end;
+
+// Function declarations
 unsigned short calculate_checksum(void *buffer, int length);
-
-struct ip build_ip_header(struct in_addr source, struct in_addr dest, int ttl);
-
-struct icmp build_icmp_header(int seq);
+void cleanup(void);
+void handle_sigint(int sig);
 
 #endif // TRACEROUTE_H

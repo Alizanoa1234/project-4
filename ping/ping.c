@@ -1,48 +1,58 @@
+#include "ping.h"
+
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/icmp6.h>
-#include <poll.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <poll.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>  
 #include <getopt.h>
 #include <math.h>
+#include <signal.h>
+#include <stddef.h>  
 
-#define RECV_TIMEOUT_MS 10000
-#define PACKET_BUFFER_SIZE 1024
-#define PING_DELAY_SEC 1
-#define MAX_ATTEMPTS 15
-#define RETRY_LIMIT 3
+// Function to print ping statistics
+void handle_sigint(int sig _attribute_((unused))) {
+    if (ping_count == 0) {
+        printf("No ping data to display.\n");
+        return;
+    }
+    float min_time = ping_times[0], max_time = ping_times[0], total_time = ping_times[0];
+    for (int i = 1; i < ping_count; i++) {
+        if (ping_times[i] < min_time) min_time = ping_times[i];
+        if (ping_times[i] > max_time) max_time = ping_times[i];
+        total_time += ping_times[i];
+    }
+    float avg_time = total_time / ping_count;
+    printf("--- Ping Statistics ---\n");
+    printf("%d packets sent, %d received, %.2f%% packet loss\n", total_packets_sent, total_packets_received,
+           100.0 * (total_packets_sent - total_packets_received) / total_packets_sent);
+    printf("rtt min/avg/max/stddev = %.2f/%.2f/%.2f/%.2f ms\n",
+           min_time, avg_time, max_time, compute_std_dev(ping_times, ping_count, avg_time));
+}
 
-// Track ping data
-int total_packets_sent = 0;
-int total_packets_received = 0;
-float total_ping_time_ms = 0.0;
-float *ping_times = NULL;  
-int ping_count = 0;
-
-// Function prototypes
-unsigned short int calculate_checksum(void *data, unsigned int len);
-void print_statistics(float *ping_times, char *target_address);
-double compute_std_dev(float *values, int count, float avg);
 
 int main(int argc, char *argv[]) {
+
+    signal(SIGINT, handle_sigint);
+
     if (argc < 5) {
         fprintf(stderr, "Usage: %s -a <address> -t <type> [-c <count>] [-f]\n", argv[0]);
         return 1;
     }
     
-    int max_pings = MAX_ATTEMPTS;  // Default max pings
     int continuous_mode = 0;       // Default is no flood mode
-    int ip_version = 0;            // 4 for IPv4, 6 for IPv6
     char *ip_address = NULL;       // Target IP address
     int opt;
+    int ip_version = 0;            // 4 for IPv4, 6 for IPv6
+    int max_pings = MAX_ATTEMPTS;  // Default max pings
 
     // Parse command-line arguments
     while ((opt = getopt(argc, argv, "a:t:c:f")) != -1) {
@@ -70,17 +80,17 @@ int main(int argc, char *argv[]) {
     }
 
     if (ip_address == NULL) {
-        fprintf(stderr, "Error: IP address is required (use -a flag).\n");
+        fprintf(stderr, "Error: required to use IP address (you can use -a flag).\n");
         return 1;
     }
     if (ip_version == 0) {
-        fprintf(stderr, "Error: Communication type is required (use -t flag with 4 for IPv4 or 6 for IPv6).\n");
+        fprintf(stderr, "Error: required to use Communication type (you can use -t flag with 4 for IPv4 or 6 for IPv6).\n");
         return 1;
     }
     
     ping_times = (float *)malloc(max_pings * sizeof(float));
     if (ping_times == NULL) {
-        perror("Memory allocation failed");
+        perror("allocation failed");
         return 1;
     }
 
@@ -109,13 +119,13 @@ int main(int argc, char *argv[]) {
     if (sock < 0) {
         perror("Failed to create socket");
         if (errno == EACCES || errno == EPERM)
-            fprintf(stderr, "You need to run the program with sudo.\n");
+            fprintf(stderr, "sudo is needed to run the program.\n");
         return 1;
     }
 
     char buffer[PACKET_BUFFER_SIZE] = {0};
-    char *data_msg = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-    int data_length = strlen(data_msg) + 1;
+    int data_length = 64;  
+    char data_msg[data_length + 1];  
     int seq_num = 0;
     struct pollfd poll_fds[1];
     poll_fds[0].fd = sock;
@@ -125,13 +135,12 @@ int main(int argc, char *argv[]) {
 
     while (max_pings-- > 0) {
         memset(buffer, 0, sizeof(buffer));
-
         if (ip_version == 4) {
             struct icmphdr icmp_hdr;
             icmp_hdr.type = ICMP_ECHO;
             icmp_hdr.code = 0;
-            icmp_hdr.un.echo.id = htons(getpid());
-            icmp_hdr.un.echo.sequence = htons(seq_num++);
+            icmp_hdr.un.echo.id = getpid();
+            icmp_hdr.un.echo.sequence = seq_num++;
             icmp_hdr.checksum = 0;
 
             memcpy(buffer, &icmp_hdr, sizeof(icmp_hdr));
@@ -141,8 +150,8 @@ int main(int argc, char *argv[]) {
             struct icmp6_hdr icmp6_hdr;
             icmp6_hdr.icmp6_type = ICMP6_ECHO_REQUEST;
             icmp6_hdr.icmp6_code = 0;
-            icmp6_hdr.icmp6_id = htons(getpid());
-            icmp6_hdr.icmp6_seq = htons(seq_num++);
+            icmp6_hdr.icmp6_id = getpid();
+            icmp6_hdr.icmp6_seq = seq_num++;
             icmp6_hdr.icmp6_cksum = 0;
 
             memcpy(buffer, &icmp6_hdr, sizeof(icmp6_hdr));
@@ -204,7 +213,7 @@ int main(int argc, char *argv[]) {
     }
 
     close(sock);
-    print_statistics(ping_times, ip_address);
+    print_ping_info(ping_times, ip_address);
     return 0;
 }
 
@@ -228,7 +237,16 @@ unsigned short int calculate_checksum(void *data, unsigned int len) {
     return ~sum;
 }
 
-void print_statistics(float *results, char *address) {
+double compute_std_dev(float *arr, int size, float avg) {
+    double sum_squared_diffs = 0.0;
+    for (int i = 0; i < size; i++) {
+        sum_squared_diffs += (arr[i] - avg) * (arr[i] - avg);
+    }
+    return sqrt(sum_squared_diffs / size);
+}
+
+
+void print_ping_info(float *results, char *address) {
     if (ping_count == 0) {
         printf("No ping data to display.\n");
         return;
@@ -241,17 +259,9 @@ void print_statistics(float *results, char *address) {
         total_time += results[i];
     }
     float avg_time = total_time / ping_count;
-    printf("--- %s ping statistics ---\n", address);
+    printf("--- %s Printing Statistics ---\n", address);
     printf("%d packets sent, %d received, %.2f%% packet loss\n", total_packets_sent, total_packets_received,
            100.0 * (total_packets_sent - total_packets_received) / total_packets_sent);
     printf("rtt min/avg/max/stddev = %.2f/%.2f/%.2f/%.2f ms\n",
            min_time, avg_time, max_time, compute_std_dev(results, ping_count, avg_time));
-}
-
-double compute_std_dev(float *arr, int size, float avg) {
-    double sum_squared_diffs = 0.0;
-    for (int i = 0; i < size; i++) {
-        sum_squared_diffs += (arr[i] - avg) * (arr[i] - avg);
-    }
-    return sqrt(sum_squared_diffs / size);
 }

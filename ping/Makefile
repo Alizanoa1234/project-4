@@ -7,12 +7,11 @@ CFLAGS = -Wall -Wextra -Werror -std=c99 -pedantic
 # Clean-up command
 REMOVE = rm -f
 
-
-# Program executable
-OUTPUT = ping
-
 # Source file
 SRC = ping.c
+
+# Output executable file name
+OUTPUT = ping
 
 # Default IP for testing
 PING_TARGET = 8.8.8.8
@@ -27,8 +26,8 @@ build: $(OUTPUT)
 all: build
 
 # Build the executable in one step (no intermediate .o file)
-$(OUTPUT): $(SRC)
-	$(CC) $(CFLAGS) -o $@ $^ -lm
+$(OUTPUT): $(SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ $^ -lm   # Add -lm to link math library
 
 # Run the program as sudo
 run: $(OUTPUT)
